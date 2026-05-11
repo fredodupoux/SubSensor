@@ -23,10 +23,10 @@
 #include <TankSensor.h>
 
 // Construct with ADS1115 channel 0, I2C address 0x48, EEPROM start 0.
-// Examples of other configurations:
-//   TankSensor tank(1);          // channel 1
-//   TankSensor tank(0, 0x49);    // channel 0, alternate I2C address
-//   TankSensor tank(0, 0x48, 32); // channel 0, EEPROM offset 32
+// Other examples:
+//   TankSensor tank(1);           // channel 1
+//   TankSensor tank(0, 0x49);     // alternate I2C address
+//   TankSensor tank(0, 0x48, 32); // custom EEPROM offset
 TankSensor tank;
 
 void setup() {
@@ -38,29 +38,44 @@ void setup() {
     while (1) delay(100);
   }
 
-  // Attempt to restore saved calibration from EEPROM.
   if (tank.loadConfig()) {
     Serial.println("Calibration loaded from EEPROM.");
   } else {
-    // No saved data -- set calibration for your hardware and save it.
     Serial.println("No saved calibration -- applying defaults.");
 
     // ADS1115 gain: GAIN_ONE covers +/-4.096V, suits a 150ohm shunt (0.6-3.0V)
     tank.setAdsGain(GAIN_ONE);
 
-    // Sensor calibration: measure actual voltages at 4mA and 20mA and set here
-    tank.setVoltageMin(0.60);    // 4 mA x 150 ohm = 0.60 V  (empty)
-    tank.setVoltageMax(3.00);    // 20 mA x 150 ohm = 3.00 V  (full sensor range)
-    tank.setSensorRange(5.0);    // sensor rated range in metres
+    // Sensor calibration: measure actual voltages at 4mA and 20mA
+    tank.setVoltageMin(0.60);   // 4 mA x 150 ohm = 0.60 V  (empty)
+    tank.setVoltageMax(3.00);   // 20 mA x 150 ohm = 3.00 V  (full)
+    tank.setSensorRange(5.0);   // sensor rated range in metres
 
-    // Tank geometry
-    tank.setTankDiameter(0.285); // inner diameter in metres  (28.5 cm)
-    tank.setTankHeight(0.365);   // usable height in metres   (36.5 cm)
+    // -----------------------------------------------------------------
+    // Option A: Vertical tank (any constant cross-section)
+    //   Set the base surface area in m2 and the usable fill height.
+    //   Works for upright cylinders, rectangular tanks, or any shape
+    //   where the cross-section is constant -- just measure or compute
+    //   the base area once.
+    // -----------------------------------------------------------------
+    tank.setTankType(TANK_VERTICAL);
+    tank.setBaseSurface(0.0638); // pi * (0.285m / 2)^2  (28.5cm diameter)
+    tank.setTankHeight(0.365);   // usable height in metres (36.5 cm)
+
+    // -----------------------------------------------------------------
+    // Option B: Horizontal cylinder (uncomment to use)
+    //   tankHeight = internal diameter of the cylinder (also the max fill).
+    //   tankLength = axial length of the cylinder.
+    //   The library computes the circular segment area at each level.
+    // -----------------------------------------------------------------
+    // tank.setTankType(TANK_HORIZONTAL_CYLINDER);
+    // tank.setTankHeight(0.60);  // internal diameter: 60 cm
+    // tank.setTankLength(1.20);  // axial length:     120 cm
 
     // Smoothing (0.05 = heavy, 1.0 = no smoothing)
     tank.setEmaAlpha(0.2);
 
-    tank.saveConfig();           // persist to EEPROM for next boot
+    tank.saveConfig();
     Serial.println("Calibration saved to EEPROM.");
   }
 
@@ -73,10 +88,10 @@ void loop() {
 
   if (r.valid) {
     Serial.print("ADC: ");       Serial.print(r.rawADC);
-    Serial.print("  Voltage: "); Serial.print(r.voltage, 3); Serial.print(" V");
-    Serial.print("  Level: ");   Serial.print(r.levelCm, 1);  Serial.print(" cm");
-    Serial.print("  Fill: ");    Serial.print(r.levelPercent, 1); Serial.print(" %");
-    Serial.print("  Volume: ");  Serial.print(r.volumeLiters, 1); Serial.println(" L");
+    Serial.print("  Voltage: "); Serial.print(r.voltage, 3);      Serial.print(" V");
+    Serial.print("  Level: ");   Serial.print(r.levelCm, 1);      Serial.print(" cm");
+    Serial.print("  Fill: ");    Serial.print(r.fillPercent, 1);   Serial.print(" %");
+    Serial.print("  Volume: ");  Serial.print(r.volumeLiters, 1);  Serial.println(" L");
   } else {
     Serial.println("Sensor not ready -- call tank.begin() in setup().");
   }
