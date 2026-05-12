@@ -56,7 +56,8 @@ TankSensor::TankSensor(uint8_t channel, uint8_t i2cAddr, uint8_t eepromAddr)
     _tankType(TANK_DEFAULT_TANK_TYPE),
     _smoothedVoltage(-1.0f),
     _initialized(false),
-    _eepromAddr(eepromAddr)
+    _eepromAddr(eepromAddr),
+    _samplesPerRead(11)
 {}
 
 // ============================================
@@ -78,15 +79,18 @@ TankReading TankSensor::read() {
   TankReading r = {0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false};
   if (!_initialized) return r;
 
-  r.rawADC  = _ads.readADC_SingleEnded(_channel);
-  float rawVolt = _ads.computeVolts(r.rawADC);
+  float smoothedVolt = -1.0f;
+  for (uint8_t i = 0; i < _samplesPerRead; i++) {
+    r.rawADC = _ads.readADC_SingleEnded(_channel);
+    float rawVolt = _ads.computeVolts(r.rawADC);
 
-  if (_smoothedVoltage < 0.0f) {
-    _smoothedVoltage = rawVolt;
-  } else {
-    _smoothedVoltage = (_emaAlpha * rawVolt) + ((1.0f - _emaAlpha) * _smoothedVoltage);
+    if (smoothedVolt < 0.0f) {
+      smoothedVolt = rawVolt;
+    } else {
+      smoothedVolt = (_emaAlpha * rawVolt) + ((1.0f - _emaAlpha) * smoothedVolt);
+    }
   }
-  r.voltage = _smoothedVoltage;
+  r.voltage = smoothedVolt;
 
   r.levelMeters = _mapFloat(r.voltage, _voltageMin, _voltageMax, 0.0f, _sensorRange);
   r.levelMeters = constrain(r.levelMeters, 0.0f, _tankHeight);
@@ -103,7 +107,10 @@ TankReading TankSensor::read() {
 // resetSmoothing
 // ============================================
 
-void TankSensor::resetSmoothing() { _smoothedVoltage = -1.0f; }
+void TankSensor::resetSmoothing() {
+  // No longer needed with internal multi-sampling approach,
+  // but kept for API compatibility
+}
 
 // ============================================
 // Sensor calibration setters
@@ -136,6 +143,18 @@ void TankSensor::setAdsGain(adsGain_t gain) {
   _gain = gain;
   if (_initialized) _ads.setGain(_gain);
   resetSmoothing();
+}
+
+// ============================================
+// Sampling configuration
+// ============================================
+
+void TankSensor::setSamplesPerRead(uint8_t n) {
+  _samplesPerRead = (n > 0) ? n : 1;
+}
+
+uint8_t TankSensor::getSamplesPerRead() const {
+  return _samplesPerRead;
 }
 
 // ============================================

@@ -195,7 +195,7 @@ public:
   // Take a reading
   TankReading read();
 
-  // Force EMA to re-seed on next read (call after changing channel or gain)
+  // Reset smoothing filter (kept for API compatibility; now a no-op)
   void resetSmoothing();
 
   // ----------------------------------------
@@ -228,6 +228,12 @@ public:
   // ----------------------------------------
   void setAdsChannel(uint8_t channel); // change channel (resets smoothing)
   void setAdsGain(adsGain_t gain);     // PGA gain (resets smoothing)
+
+  // ----------------------------------------
+  // Sampling configuration
+  // ----------------------------------------
+  void setSamplesPerRead(uint8_t n);   // number of rapid samples per read() call (default 11)
+  uint8_t getSamplesPerRead() const;
 
   // ----------------------------------------
   // All-in-one helper (vertical tanks)
@@ -276,6 +282,7 @@ private:
   bool  _initialized;
 
   uint8_t _eepromAddr;
+  uint8_t _samplesPerRead;
 
   float _volumeFromLevel(float levelM) const;
   float _mapFloat(float x, float inMin, float inMax,
