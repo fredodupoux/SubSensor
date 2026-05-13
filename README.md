@@ -1,6 +1,6 @@
-# TankSensor Library
+# SubmersibleSensor Library
 
-A robust Arduino library for reading 4-20mA submersible liquid level sensors via an **ADS1115 16-bit I2C ADC**, with EMA smoothing, flexible tank geometry support, and persistent EEPROM calibration.
+A robust Arduino library for reading 4-20mA submersible hydrostatic pressure sensors (e.g., TL-136-like) via an **ADS1115 16-bit I2C ADC**, with EMA smoothing, flexible tank geometry support, and persistent EEPROM calibration. These sensors commonly use a supply voltage in the **12–32 V DC** range.
 
 ## Features
 
@@ -15,13 +15,12 @@ A robust Arduino library for reading 4-20mA submersible liquid level sensors via
 
 ## Hardware Requirements
 
-### Electronics
 - **ADS1115 module** — 16-bit I2C ADC breakout (widely available, ~$3–5 USD)
-- **4-20mA submersible level sensor** — Any industrial sensor in this current range (e.g., 0–5 m, 0–10 m range)
+- **4-20mA submersible hydrostatic pressure sensor** — Any industrial sensor in this current range (e.g., TL-136-like sensors rated 0–5 m, 0–10 m, etc.). Typical supply voltage: **12–32 V DC**.
 - **150Ω shunt resistor** — Converts 4–20 mA to 0.6–3.0 V (standard for 150Ω)
   - Can use 100Ω (0.4–2.0 V), 50Ω (0.2–1.0 V), or other values — adjust `setAdsGain()` and calibration accordingly
 - **10µF capacitor** — Noise filtering across the shunt resistor
-- **12–24 V DC power supply** — For the sensor (specs depend on your specific sensor)
+- **12–32 V DC power supply** — For the sensor (specs depend on your specific sensor; TL-136-like sensors often accept this range)
 - **ESP8266, ESP32, or Arduino Uno/Nano** — For the microcontroller
 
 ### Libraries
@@ -41,9 +40,9 @@ Or via command line (using Arduino CLI):
 arduino-cli lib install "Adafruit ADS1X15"
 ```
 
-### 2. Install TankSensor Library
+### 2. Install SubmersibleSensor Library
 
-Copy the `TankSensor` folder to your Arduino `libraries` directory:
+Copy the `SubmersibleSensor` folder to your Arduino `libraries` directory:
 - **macOS / Linux:** `~/Arduino/libraries/`
 - **Windows:** `Documents\Arduino\libraries\`
 
@@ -113,42 +112,42 @@ Sensor BLACK/GREEN  --+-->  150Ω shunt resistor  --+-->  GND
 ### Minimal Vertical Tank Example
 
 ```cpp
-#include <TankSensor.h>
+#include <SubSensor.h>
 
 // Create a sensor on ADS1115 channel 0, default I2C address 0x48
-TankSensor tank;
+SubSensor sensor;
 
 void setup() {
   Serial.begin(115200);
   delay(500);
 
   // Initialize the ADS1115
-  if (!tank.begin()) {
+  if (!sensor.begin()) {
     Serial.println("ERROR: ADS1115 not found!");
     while (1) delay(100);
   }
 
   // Try to load saved calibration from EEPROM
-  if (!tank.loadConfig()) {
+  if (!sensor.loadConfig()) {
     // First boot — configure the sensor
-    tank.setAdsGain(GAIN_ONE);      // ±4.096V for 150Ω shunt
-    tank.setVoltageMin(0.60);       // 4 mA reading
-    tank.setVoltageMax(3.00);       // 20 mA reading
-    tank.setSensorRange(5.0);       // sensor rated to 5 meters
+    sensor.setAdsGain(GAIN_ONE);      // ±4.096V for 150Ω shunt
+    sensor.setVoltageMin(0.60);       // 4 mA reading
+    sensor.setVoltageMax(3.00);       // 20 mA reading
+    sensor.setSensorRange(5.0);       // sensor rated to 5 meters
 
     // Vertical tank: cylinder with 28.5 cm diameter, 36.5 cm height
-    tank.setTankType(TANK_VERTICAL);
-    tank.setBaseSurface(0.0638);    // π * (0.285/2)² m²
-    tank.setTankHeight(0.365);
+    sensor.setTankType(TANK_VERTICAL);
+    sensor.setBaseSurface(0.0638);    // π * (0.285/2)² m²
+    sensor.setTankHeight(0.365);
 
-    tank.setEmaAlpha(0.2);          // EMA smoothing
-    tank.saveConfig();              // Save to EEPROM
+    sensor.setEmaAlpha(0.2);          // EMA smoothing
+    sensor.saveConfig();              // Save to EEPROM
     Serial.println("Calibration saved.");
   }
 }
 
 void loop() {
-  TankReading r = tank.read();
+  TankReading r = sensor.read();
   
   if (r.valid) {
     Serial.print("Level: ");    Serial.print(r.levelCm);       Serial.println(" cm");
@@ -163,38 +162,38 @@ void loop() {
 ### Horizontal Cylinder Tank Example
 
 ```cpp
-#include <TankSensor.h>
+#include <SubSensor.h>
 
-TankSensor tank;
+SubSensor sensor;
 
 void setup() {
   Serial.begin(115200);
   delay(500);
 
-  if (!tank.begin()) {
+  if (!sensor.begin()) {
     Serial.println("ERROR: ADS1115 not found!");
     while (1) delay(100);
   }
 
-  if (!tank.loadConfig()) {
+  if (!sensor.loadConfig()) {
     // Configure for a horizontal cylindrical tank
-    tank.setAdsGain(GAIN_ONE);
-    tank.setVoltageMin(0.60);
-    tank.setVoltageMax(3.00);
-    tank.setSensorRange(5.0);
+    sensor.setAdsGain(GAIN_ONE);
+    sensor.setVoltageMin(0.60);
+    sensor.setVoltageMax(3.00);
+    sensor.setSensorRange(5.0);
 
     // Horizontal cylinder: internal diameter 60 cm, length 120 cm
-    tank.setTankType(TANK_HORIZONTAL_CYLINDER);
-    tank.setTankHeight(0.60);    // internal diameter
-    tank.setTankLength(1.20);    // axial length
+    sensor.setTankType(TANK_HORIZONTAL_CYLINDER);
+    sensor.setTankHeight(0.60);    // internal diameter
+    sensor.setTankLength(1.20);    // axial length
 
-    tank.setEmaAlpha(0.2);
-    tank.saveConfig();
+    sensor.setEmaAlpha(0.2);
+    sensor.saveConfig();
   }
 }
 
 void loop() {
-  TankReading r = tank.read();
+  TankReading r = sensor.read();
   if (r.valid) {
     Serial.print("Level: ");  Serial.print(r.levelCm);      Serial.println(" cm");
     Serial.print("Volume: "); Serial.print(r.volumeLiters); Serial.println(" L");
@@ -219,9 +218,9 @@ If using a different shunt resistor, adjust accordingly:
 **To calibrate:**
 1. Place the sensor at a **known empty level** (e.g., on a bench, not in liquid)
 2. Measure the voltage with a multimeter or read `Serial.print(r.voltage)` in raw mode
-3. Call `tank.setVoltageMin(measured_voltage)`
+3. Call `sensor.setVoltageMin(measured_voltage)`
 4. Repeat at **full level** with `setVoltageMax()`
-5. Save with `tank.saveConfig()`
+5. Save with `sensor.saveConfig()`
 
 ### ADS Gain Selection (PGA)
 
@@ -245,9 +244,9 @@ The **Programmable Gain Amplifier** determines the full-scale voltage range and 
 The Exponential Moving Average reduces jitter:
 
 ```cpp
-tank.setEmaAlpha(0.05);   // Heavy smoothing, slow to respond
-tank.setEmaAlpha(0.2);    // Moderate smoothing (default)
-tank.setEmaAlpha(1.0);    // No smoothing, raw readings
+sensor.setEmaAlpha(0.05);   // Heavy smoothing, slow to respond
+sensor.setEmaAlpha(0.2);    // Moderate smoothing (default)
+sensor.setEmaAlpha(1.0);    // No smoothing, raw readings
 ```
 
 Lower alpha = more smoothing (slower response). Adjust based on sensor noise and application latency requirements.
@@ -259,21 +258,21 @@ Lower alpha = more smoothing (slower response). Adjust based on sensor noise and
 For any constant cross-section (upright cylinder, rectangle, custom shape):
 
 ```cpp
-tank.setTankType(TANK_VERTICAL);
-tank.setBaseSurface(area_in_m2);   // Cross-sectional area
-tank.setTankHeight(height_in_m);   // Usable fill height
+sensor.setTankType(TANK_VERTICAL);
+sensor.setBaseSurface(area_in_m2);   // Cross-sectional area
+sensor.setTankHeight(height_in_m);   // Usable fill height
 ```
 
 **Example: 28.5 cm diameter cylinder**
 ```cpp
 float radius = 0.285 / 2.0;
 float area = 3.14159 * radius * radius;  // ≈ 0.0638 m²
-tank.setBaseSurface(area);
+sensor.setBaseSurface(area);
 ```
 
 **Example: Rectangular tank 1.5 m × 0.5 m**
 ```cpp
-tank.setBaseSurface(1.5 * 0.5);  // 0.75 m²
+sensor.setBaseSurface(1.5 * 0.5);  // 0.75 m²
 ```
 
 #### Horizontal Cylinders
@@ -281,9 +280,9 @@ tank.setBaseSurface(1.5 * 0.5);  // 0.75 m²
 For a cylinder lying on its side:
 
 ```cpp
-tank.setTankType(TANK_HORIZONTAL_CYLINDER);
-tank.setTankHeight(internal_diameter_m);  // Also the max fill level
-tank.setTankLength(axial_length_m);       // Length of the cylinder
+sensor.setTankType(TANK_HORIZONTAL_CYLINDER);
+sensor.setTankHeight(internal_diameter_m);  // Also the max fill level
+sensor.setTankLength(axial_length_m);       // Length of the cylinder
 ```
 
 The library calculates the circular segment area at each level using:
@@ -420,8 +419,8 @@ struct TankReading {
 **Symptom:** Calibration settings reset after power cycle
 
 **Fixes:**
-1. **Call `saveConfig()`:** Ensure you explicitly call `tank.saveConfig()` after setting parameters (not automatic)
-2. **EEPROM address conflict:** If using shared EEPROM space, change the address: `tank.setEepromAddress(32)` before `loadConfig()` / `saveConfig()`
+1. **Call `saveConfig()`:** Ensure you explicitly call `sensor.saveConfig()` after setting parameters (not automatic)
+2. **EEPROM address conflict:** If using shared EEPROM space, change the address: `sensor.setEepromAddress(32)` before `loadConfig()` / `saveConfig()`
 3. **EEPROM limits:** AVR boards have ~1 KB EEPROM; ESP8266/ESP32 have more but fragmentation can occur — use non-overlapping addresses
 
 ## Sensor Selection Tips
@@ -434,7 +433,7 @@ struct TankReading {
 
 ## Examples
 
-See `examples/BasicReading/BasicReading.ino` for a complete working example that demonstrates both vertical and horizontal cylinder tank configurations.
+See `examples/BasicReading/BasicReading.ino` for a complete working example that demonstrates both vertical and horizontal cylinder tank configurations. The example uses the `SubSensor` API.
 
 ## License
 

@@ -1,6 +1,6 @@
 /*
  * ============================================
- * TankSensor - 4-20mA Level Sensor Library
+ * SubmersibleSensor - Hydrostatic Pressure (4-20mA) Sensor Library
  * ============================================
  *
  * Reads a 4-20mA submersible pressure/level sensor via an ADS1115
@@ -38,13 +38,13 @@
  * TYPICAL WIRING
  * ============================================
  *
- *   12-24V PSU (+) -----> Sensor RED wire
+ *   12-32V PSU (+) -----> Sensor RED wire
  *
  *   Sensor BLACK/GREEN --+----> ADS1115 A0 (channel 0)
  *                        +----> 150ohm resistor ----> GND
  *                        +----> 10uF capacitor  ----> GND
  *
- *   12-24V PSU (-) -----> Common GND (shared with MCU)
+ *   12-32V PSU (-) -----> Common GND (shared with MCU)
  *
  *   ADS1115 ---> MCU
  *     VDD   ---> 3.3V or 5V
@@ -60,35 +60,35 @@
  * QUICK START
  * ============================================
  *
- *   #include <TankSensor.h>
+ *   #include <SubSensor.h>
  *
- *   TankSensor tank;   // default: channel 0, addr 0x48, EEPROM 0
+ *   SubSensor sensor;   // default: channel 0, addr 0x48, EEPROM 0
  *
  *   void setup() {
- *     if (!tank.begin()) { while(1); }  // ADS1115 not found
+ *     if (!sensor.begin()) { while(1); }  // ADS1115 not found
  *
- *     if (!tank.loadConfig()) {
- *       tank.setAdsGain(GAIN_ONE);       // +/-4.096V suits 150ohm shunt
- *       tank.setVoltageMin(0.60);        // 4 mA x 150 ohm
- *       tank.setVoltageMax(3.00);        // 20 mA x 150 ohm
- *       tank.setSensorRange(5.0);        // sensor rated range (m)
+ *     if (!sensor.loadConfig()) {
+ *       sensor.setAdsGain(GAIN_ONE);       // +/-4.096V suits 150ohm shunt
+ *       sensor.setVoltageMin(0.60);        // 4 mA x 150 ohm
+ *       sensor.setVoltageMax(3.00);        // 20 mA x 150 ohm
+ *       sensor.setSensorRange(5.0);        // sensor rated range (m)
  *
  *       // --- Vertical tank (constant cross-section) ---
- *       tank.setTankType(TANK_VERTICAL);
- *       tank.setBaseSurface(0.0638);     // e.g. pi * (0.285/2)^2
- *       tank.setTankHeight(0.365);
+ *       sensor.setTankType(TANK_VERTICAL);
+ *       sensor.setBaseSurface(0.0638);     // e.g. pi * (0.285/2)^2
+ *       sensor.setTankHeight(0.365);
  *
  *       // --- OR: Horizontal cylinder ---
- *       // tank.setTankType(TANK_HORIZONTAL_CYLINDER);
- *       // tank.setTankHeight(0.60);     // internal diameter (m)
- *       // tank.setTankLength(1.20);     // axial length (m)
+ *       // sensor.setTankType(TANK_HORIZONTAL_CYLINDER);
+ *       // sensor.setTankHeight(0.60);     // internal diameter (m)
+ *       // sensor.setTankLength(1.20);     // axial length (m)
  *
- *       tank.saveConfig();
+ *       sensor.saveConfig();
  *     }
  *   }
  *
  *   void loop() {
- *     TankReading r = tank.read();
+ *     TankReading r = sensor.read();
  *     if (r.valid) {
  *       Serial.print(r.levelCm);      Serial.println(" cm");
  *       Serial.print(r.volumeLiters); Serial.println(" L");
@@ -130,29 +130,21 @@
  *
  */
 
-#ifndef TANK_SENSOR_H
-#define TANK_SENSOR_H
+#ifndef SUB_SENSOR_H
+#define SUB_SENSOR_H
 
 #include <Arduino.h>
 #include <Adafruit_ADS1X15.h>
 
-// ============================================
-// Tank geometry type
-// ============================================
-
 enum TankType : uint8_t {
-  TANK_VERTICAL            = 0, // constant cross-section; Volume = baseSurface * level
-  TANK_HORIZONTAL_CYLINDER = 1  // cylinder on its side;   Volume = segment_area(level) * tankLength
+  TANK_VERTICAL            = 0,
+  TANK_HORIZONTAL_CYLINDER = 1
 };
-
-// ============================================
-// Defaults
-// ============================================
 
 #define TANK_DEFAULT_VOLT_MIN      0.60f
 #define TANK_DEFAULT_VOLT_MAX      3.00f
 #define TANK_DEFAULT_SENSOR_RANGE  5.0f
-#define TANK_DEFAULT_BASE_SURFACE  0.2463f  // ~oil drum: pi*(0.28m)^2
+#define TANK_DEFAULT_BASE_SURFACE  0.2463f
 #define TANK_DEFAULT_HEIGHT        0.84f
 #define TANK_DEFAULT_LENGTH        1.0f
 #define TANK_DEFAULT_EMA_ALPHA     0.2f
@@ -161,96 +153,50 @@ enum TankType : uint8_t {
 #define TANK_DEFAULT_ADS_GAIN      GAIN_ONE
 #define TANK_DEFAULT_TANK_TYPE     TANK_VERTICAL
 
-// ============================================
-// TankReading
-// ============================================
-
 struct TankReading {
-  int16_t rawADC;        // raw ADS1115 value (16-bit signed)
-  float   voltage;       // EMA-smoothed voltage (V)
-  float   levelMeters;   // liquid level (m)
-  float   levelCm;       // liquid level (cm)
-  float   fillPercent;   // fill % by height (0-100)
-  float   volumeLiters;  // volume (L)
-  float   volumeGallons; // volume (US gal)
-  bool    valid;         // false if begin() not called or ADS1115 not found
+  int16_t rawADC;
+  float   voltage;
+  float   levelMeters;
+  float   levelCm;
+  float   fillPercent;
+  float   volumeLiters;
+  float   volumeGallons;
+  bool    valid;
 };
 
-// ============================================
-// TankSensor
-// ============================================
-
-class TankSensor {
+class SubSensor {
 public:
-  // channel    -- ADS1115 input channel (0-3)   (default 0)
-  // i2cAddr    -- ADS1115 I2C address            (default 0x48)
-  // eepromAddr -- EEPROM start byte              (default 0)
-  explicit TankSensor(uint8_t channel    = TANK_DEFAULT_ADS_CHANNEL,
-                      uint8_t i2cAddr    = TANK_DEFAULT_ADS_ADDRESS,
-                      uint8_t eepromAddr = 0);
+  explicit SubSensor(uint8_t channel    = TANK_DEFAULT_ADS_CHANNEL,
+                     uint8_t i2cAddr    = TANK_DEFAULT_ADS_ADDRESS,
+                     uint8_t eepromAddr = 0);
 
-  // Initialise I2C and ADS1115. Returns false if chip not found.
   bool begin();
-
-  // Take a reading
   TankReading read();
-
-  // Reset smoothing filter (kept for API compatibility; now a no-op)
   void resetSmoothing();
 
-  // ----------------------------------------
-  // Sensor calibration
-  // ----------------------------------------
-  void setVoltageMin(float v);       // voltage at empty (4 mA x shunt ohm)
-  void setVoltageMax(float v);       // voltage at full  (20 mA x shunt ohm)
-  void setSensorRange(float meters); // sensor rated max range (m)
-  void setEmaAlpha(float alpha);     // 0.05 = heavy smoothing, 1.0 = raw
+  void setVoltageMin(float v);
+  void setVoltageMax(float v);
+  void setSensorRange(float meters);
+  void setEmaAlpha(float alpha);
 
-  // ----------------------------------------
-  // Tank geometry
-  // ----------------------------------------
   void setTankType(TankType type);
-
-  // TANK_VERTICAL: base cross-sectional area (m2)
-  // Not used in TANK_HORIZONTAL_CYLINDER mode.
   void setBaseSurface(float m2);
-
-  // Both modes: fill height (m) for VERTICAL;
-  //             internal diameter (m) for HORIZONTAL_CYLINDER.
   void setTankHeight(float meters);
-
-  // TANK_HORIZONTAL_CYLINDER: axial length of the cylinder (m).
-  // Not used in TANK_VERTICAL mode.
   void setTankLength(float meters);
 
-  // ----------------------------------------
-  // ADS1115 configuration
-  // ----------------------------------------
-  void setAdsChannel(uint8_t channel); // change channel (resets smoothing)
-  void setAdsGain(adsGain_t gain);     // PGA gain (resets smoothing)
+  void setAdsChannel(uint8_t channel);
+  void setAdsGain(adsGain_t gain);
 
-  // ----------------------------------------
-  // Sampling configuration
-  // ----------------------------------------
-  void setSamplesPerRead(uint8_t n);   // number of rapid samples per read() call (default 11)
+  void setSamplesPerRead(uint8_t n);
   uint8_t getSamplesPerRead() const;
 
-  // ----------------------------------------
-  // All-in-one helper (vertical tanks)
-  // ----------------------------------------
   void configure(float voltMin, float voltMax, float sensorRange,
                  float baseSurface, float tankHeight, float emaAlpha);
 
-  // ----------------------------------------
-  // EEPROM persistence
-  // ----------------------------------------
   void setEepromAddress(uint8_t addr);
-  bool loadConfig();   // returns true if valid data was found
+  bool loadConfig();
   void saveConfig();
 
-  // ----------------------------------------
-  // Getters
-  // ----------------------------------------
   float     getVoltageMin()    const;
   float     getVoltageMax()    const;
   float     getSensorRange()   const;
@@ -289,4 +235,4 @@ private:
                   float outMin, float outMax) const;
 };
 
-#endif // TANK_SENSOR_H
+#endif // SUB_SENSOR_H
